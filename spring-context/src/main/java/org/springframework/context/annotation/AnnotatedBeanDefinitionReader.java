@@ -65,6 +65,12 @@ public class AnnotatedBeanDefinitionReader {
 	 * in the form of a {@code BeanDefinitionRegistry}
 	 * @see #AnnotatedBeanDefinitionReader(BeanDefinitionRegistry, Environment)
 	 * @see #setEnvironment(Environment)
+	 *
+	 * 这里的registry就是AnnotationConfigApplicationContext
+	 * AnnotationConfigApplicationContext extends GenericApplicationContext
+	 * GenericApplicationContext implements AbstractApplicationCont
+	 * BeanDefinitionRegistry  顾名思义就是BeanDefinition的注册器
+	 * 那么何为BeanDefinition呢？参考BeanDefinition的源码的注释（存放spring bean 信息的地方）
 	 */
 	public AnnotatedBeanDefinitionReader(BeanDefinitionRegistry registry) {
 		this(registry, getOrCreateEnvironment(registry));
@@ -212,37 +218,58 @@ public class AnnotatedBeanDefinitionReader {
 	 */
 	<T> void doRegisterBean(Class<T> annotatedClass, @Nullable Supplier<T> instanceSupplier, @Nullable String name,
 			@Nullable Class<? extends Annotation>[] qualifiers, BeanDefinitionCustomizer... definitionCustomizers) {
-
+//		根据指定的class 创建一个AnnotatedGenericBeanDefinition 实现了 BeanDefinition 接口
+//		这个AnnotatedGenericBeanDefinition可以理解为一个数据结构
+//		AnnotatedGenericBeanDefinition包含了类的其他信息,比如一些元信息,比如scope，lazy等等
 		AnnotatedGenericBeanDefinition abd = new AnnotatedGenericBeanDefinition(annotatedClass);
+//		判断这个类是否需要跳过解析
+//		过代码可以知道spring判断是否跳过解析，主要判断类有没有加Conditional注解
 		if (this.conditionEvaluator.shouldSkip(abd.getMetadata())) {
 			return;
 		}
-
+		//不知道
 		abd.setInstanceSupplier(instanceSupplier);
+//		得到类的作用域，就是scope 注解
 		ScopeMetadata scopeMetadata = this.scopeMetadataResolver.resolveScopeMetadata(abd);
+//		把类的作用域添加到数据结构结构中 ，值为singleton 、prototype啥的
 		abd.setScope(scopeMetadata.getScopeName());
+//		通过beanNameGenerator生成类的名字，没有设置过就使用默认的，没有设置的话，就是类首字母小写
 		String beanName = (name != null ? name : this.beanNameGenerator.generateBeanName(abd, this.registry));
-
+//		处理类当中的通用注解（Lazy、Primary、DependsOn、Role、Description）
+//		处理完成之后processCommonDefinitionAnnotations中依然是把他添加到数据结构当中（保存到bd对应的字段中）
 		AnnotationConfigUtils.processCommonDefinitionAnnotations(abd);
+//		如果在向容器注册注解Bean定义时，使用了额外的限定符注解则解析
+//		主要涉及到spring的自动装配, 如果qualifiers 不为空则以其中包含的通用注解为准
+//		然后依次判断了注解当中是否包含了Primary、Lazyd
 		if (qualifiers != null) {
 			for (Class<? extends Annotation> qualifier : qualifiers) {
+				//如果配置了@Primary注解，如果加了则作为首选
 				if (Primary.class == qualifier) {
 					abd.setPrimary(true);
 				}
+				//懒加载，前面加过
 				else if (Lazy.class == qualifier) {
 					abd.setLazyInit(true);
 				}
 				else {
+					//如果使用了除@Primary和@Lazy以外的其他注解，则为该Bean添加一个根据名字自动装配的限定符
+					//这里难以理解
 					abd.addQualifier(new AutowireCandidateQualifier(qualifier));
 				}
 			}
 		}
+		//扩展点之一吧，默认没有
 		for (BeanDefinitionCustomizer customizer : definitionCustomizers) {
 			customizer.customize(abd);
 		}
-
+//		这个holder就是一个对参数的简单包装，避免方法传参过多，不优雅
 		BeanDefinitionHolder definitionHolder = new BeanDefinitionHolder(abd, beanName);
+//		ScopedProxyMode 这个知识点比较复杂，貌似需要结合web去理解
 		definitionHolder = AnnotationConfigUtils.applyScopedProxyMode(scopeMetadata, definitionHolder, this.registry);
+//		把上述的这个数据结构注册给registry
+//		registy就是AnnotatonConfigApplicationContext
+//		AnnotatonConfigApplicationContext在初始化的时候通過调用父类的构造方法实例化了一个DefaultListableBeanFactory（在父类 GenericApplicationContext 中实例化的）
+//		registerBeanDefinition里面就是把definitionHolder这个数据结构包含的信息注册到 DefaultListableBeanFactory这个工厂
 		BeanDefinitionReaderUtils.registerBeanDefinition(definitionHolder, this.registry);
 	}
 
