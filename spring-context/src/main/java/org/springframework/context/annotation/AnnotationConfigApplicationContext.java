@@ -27,6 +27,20 @@ import org.springframework.lang.Nullable;
 import org.springframework.util.Assert;
 
 /**
+ * Spring中出来注解Bean定义的类有两个：
+ * AnnotationConfigApplicationContext和
+ * AnnotationConfigWebApplicationContext。
+ * AnnotationConfigWebApplicationContext 是 AnnotationConfigApplicationContext的web版本
+ * 两者的用法以及对注解的处理方式几乎没有什么差别
+ * 通过分析这个类我们知道注册一个bean到spring容器有两种办法
+ * 一、直接将注解Bean注册到容器中：（参考）public void register(Class<?>... annotatedClasses)
+ * 但是直接把一个注解的bean注册到容器当中也分为两种方法
+ * 1、在初始化容器时注册并且解析
+ * 2、也可以在容器创建之后手动调用注册方法向容器注册，然后通过手动刷新容器，使得容器对注册的注解Bean进行处理。
+ *
+ * 二、通过扫描指定的包及其子包下的所有类
+ * 扫描其实同上，也是两种方法，初始化的时候扫描，和初始化之后再扫描
+ *
  * Standalone application context, accepting annotated classes as input - in particular
  * {@link Configuration @Configuration}-annotated classes, but also plain
  * {@link org.springframework.stereotype.Component @Component} types and JSR-330 compliant
@@ -52,17 +66,33 @@ import org.springframework.util.Assert;
  */
 public class AnnotationConfigApplicationContext extends GenericApplicationContext implements AnnotationConfigRegistry {
 
+	/**
+	 * 顾名思义 reader是一个读取器
+	 * 读取什么呢？还是顾名思义AnnotatedBeanDefinition意思是读取一个被加了注解的bean
+	 */
 	private final AnnotatedBeanDefinitionReader reader;
 
+	/**
+	 * 顾名思义 scanner是一个扫描器，扫描所有加了注解的bean
+	 * 扫描啥呢，还是顾名思义ClassPathBeanDefinitionScanner 扫描指定路径下被加了注解的bean
+	 */
 	private final ClassPathBeanDefinitionScanner scanner;
 
 
 	/**
+	 * 初始化 bean 的读取和扫描器
+	 * 默认构造函数，如果直接调用这个默认构造方法，需要在稍后通过调用其register()，去注册配置类（javaconfig）
+	 * 最后调用refresh()方法刷新容器，触发容器对注解Bean的载入、解析和注册过程
 	 * Create a new AnnotationConfigApplicationContext that needs to be populated
 	 * through {@link #register} calls and then manually {@linkplain #refresh refreshed}.
 	 */
 	public AnnotationConfigApplicationContext() {
+//		创建一个读取注解的Bean定义读取器，国通它读取class上的信息，转成bd，然后放置到 registry 中
 		this.reader = new AnnotatedBeanDefinitionReader(this);
+//		可以用来扫描包或者类，继而转换成bd
+//		但是实际上我们扫描包工作不是scanner这个对象来完成的
+//		是spring自己new的一个ClassPathBeanDefinitionScanner
+//		这里的scanner仅仅是为了程序员能够在外部调用AnnotationConfigApplicationContext对象的scan方法
 		this.scanner = new ClassPathBeanDefinitionScanner(this);
 	}
 
@@ -77,12 +107,17 @@ public class AnnotationConfigApplicationContext extends GenericApplicationContex
 	}
 
 	/**
+	 * 这个构造方法需要传入一个被javaconfig注解了的配置类（不加没没事，一般都加上 @ComponentScan 啥的）
+	 * 然后会把这个被注解了javaconfig的类通过注解读取器读取后继而解析
 	 * Create a new AnnotationConfigApplicationContext, deriving bean definitions
 	 * from the given annotated classes and automatically refreshing the context.
 	 * @param annotatedClasses one or more annotated classes,
 	 * e.g. {@link Configuration @Configuration} classes
 	 */
 	public AnnotationConfigApplicationContext(Class<?>... annotatedClasses) {
+		//annotatedClasses  appconfig.class
+		//这里由于他有父类，故而会先调用父类的构造方法，然后才会调用自己的构造方法
+		//在自己构造方法中初始一个读取器和扫描器
 		this();
 		register(annotatedClasses);
 		refresh();
@@ -144,6 +179,9 @@ public class AnnotationConfigApplicationContext extends GenericApplicationContex
 	//---------------------------------------------------------------------
 
 	/**
+	 * 注册单个bean给容器
+	 * 比如有新加的类可以用这个方法
+	 * 但是注册注册之后需要手动调用refresh方法去触发容器解析注解
 	 * Register one or more annotated classes to be processed.
 	 * <p>Note that {@link #refresh()} must be called in order for the context
 	 * to fully process the new classes.
